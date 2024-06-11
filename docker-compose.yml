@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+
+  db:
+    image: postgres:12.0-alpine
+    container_name: sms_db_container
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=sms
+      # - POSTGRES_USER=${DATABASE_USER}
+      # - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      # - POSTGRES_DB=${DATABASE_NAME}
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    networks:
+      - sms
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  django:
+    image: django-sms
+    container_name: sms_django_container
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=password
+      - DATABASE_NAME=sms
+      - DATABASE_HOST=db
+    networks:
+      - sms
+    volumes:
+      - ./core:/core # To mount the core directory to the container for update changes without rebuilding the image
+    depends_on:
+      db:
+        condition: service_healthy
+
+  dashboard:
+    image: dashboard-sms
+    container_name: sms_dashboard_container
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    stdin_open: true
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+    networks:
+      - sms
+    depends_on:
+      - django
+
+  nginx:
+    image: nginx:alpine
+    container_name: sms_nginx_container
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+    networks:
+      - sms
+    
+    depends_on:
+      - django
+      - dashboard
+
+networks:
+  sms:
+    driver: bridge
+
+volumes:
+  postgres-data:
