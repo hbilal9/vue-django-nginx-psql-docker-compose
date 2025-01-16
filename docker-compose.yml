@@ -32,10 +32,11 @@ services:
     env_file:
       - ./core/.env
     environment:
+      - DJANGO_SETTINGS_MODULE=core.settings
       - DATABASE_USER=postgres
-      - DATABASE_PASSWORD=password
+      - DATABASE_PASSWORD=db_password
       - DATABASE_PORT=5432
-      - DATABASE_NAME=vpn
+      - DATABASE_NAME=db_name
       - DATABASE_HOST=db
     command: >
       sh -c "sleep 10 && python manage.py migrate &&
