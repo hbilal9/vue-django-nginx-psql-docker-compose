@@ -1,0 +1,131 @@
+services:
+  traefic:
+    image: traefik:v3.3
+    container_name: traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # ACME (Let's Encrypt) configuration:
+      - "--certificatesresolvers.myresolver.acme.email=support@tab2fix.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+    ports:
+      - "443:443"
+      - "80:80"
+      - "8080:8080"
+    networks:
+      - tapiem
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+       - "./letsencrypt:/letsencrypt"  # Persist certificates
+
+  db:
+    image: postgres:16.0-alpine
+    container_name: tapiem_db_container
+    environment:
+      - POSTGRES_USER=tapiem
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=machanic
+      # - POSTGRES_USER=${DATABASE_USER}
+      # - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      # - POSTGRES_DB=${DATABASE_NAME}
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - tapiem
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  django:
+    image: django-tapiem
+    container_name: tapiem_django_container
+    build:
+      context: ./core
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./core/.env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.django.rule=Host(`django.tapiem.com`)"
+      - "traefik.http.routers.django.entrypoints=websecure"
+      - "traefik.http.routers.django.tls=true"
+      - "traefik.http.routers.django.tls.certresolver=myresolver"
+      - "traefik.http.services.django.loadbalancer.server.port=8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=core.settings
+      - DATABASE_USER=tapiem
+      - DATABASE_PASSWORD=password
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=machanic
+      - DATABASE_HOST=db
+    command: >
+      sh -c "sleep 10 && python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             python manage.py create_superuser &&
+             uvicorn core.asgi:application --host 0.0.0.0 --port 8000"
+    networks:
+      - tapiem
+    volumes:
+      - ./core:/core # To mount the core directory to the container for update changes without rebuilding the image
+    depends_on:
+      db:
+        condition: service_healthy
+      traefic:
+        condition: service_started
+
+  dashboard:
+    image: dashboard-tapiem
+    container_name: tapiem_dashboard_container
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    stdin_open: true
+    ports:
+      - "3000:3000"
+    # volumes: # un comment if you want nginx with npm run build without any serve cmnd
+    #   - ./dashboard:/app
+    #   - /app/node_modules
+    # - dashboard-dist:/app/dist
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`dashboard.tapiem.com`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls=true"
+      - "traefik.http.routers.dashboard.tls.certresolver=myresolver"
+      - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
+    networks:
+      - tapiem
+    depends_on:
+      - traefic
+      - django
+
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: tapiem_nginx_container
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./nginx:/etc/nginx/conf.d
+  #     - dashboard-dist:/usr/share/nginx/html/dashboard
+  #   networks:
+  #     - tapiem
+    
+  #   depends_on:
+  #     - django
+  #     - dashboard
+
+networks:
+  tapiem:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  # dashboard-dist: # to copy /dist folder to the nginx
