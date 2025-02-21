@@ -1,4 +1,4 @@
-# Vue-Django-Nginx-PostgreSQL Docker Compose
+# Vue/React-Django-Nginx-PostgreSQL Docker Compose
 
 This repository contains a Docker Compose setup for a full-stack application with Vue.js, Django, Nginx, and PostgreSQL.
 
@@ -27,6 +27,14 @@ The `Dockerfile` sets up the Django application environment within an Alpine-bas
 - Copying the requirements file and installing dependencies.
 - Copying the application code.
 - Exposing the port for the Django application.
+
+## Before building image
+- create init.sql file and copy contents from repo init.sql
+- create letsencrypt directory
+  - ```mkdir -p ./letsencrypt```
+  - ```touch ./letsencrypt/acme.json```
+  - ```chmod 600 ./letsencrypt/acme.json```
+  
 
 For detailed steps, refer to the [Dockerfile](https://github.com/hbilal9/vue-django-nginx-psql-docker-compose/blob/2eb891e8d767d07bb58aa9237c38cfd800d64efd/Dockerfile).
 
